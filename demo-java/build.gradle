@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'io.freefair.aspectj' version '9.0.0'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty "benchmark.enabled", "true"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    aspect project(':metrumj-lib')
+
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+    implementation 'org.aspectj:aspectjrt:1.9.19'
+    aspect 'org.aspectj:aspectjweaver:1.9.19'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
