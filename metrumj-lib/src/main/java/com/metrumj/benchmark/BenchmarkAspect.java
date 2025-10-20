@@ -16,20 +16,29 @@ public class BenchmarkAspect {
     private final com.sun.management.OperatingSystemMXBean osBean =
             (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
+    public BenchmarkAspect() {
+        System.out.println("⚙️ BenchmarkAspect loaded by: " + this.getClass().getClassLoader().getName());
+    }
+
     @Around("execution(@com.metrumj.benchmark.Benchmark * *(..))")
     public Object benchmark(ProceedingJoinPoint joinPoint) throws Throwable {
         if (!BenchmarkConfig.isBenchmarkEnabled()) {
             return joinPoint.proceed();
         }
 
-        long usedBefore = usedMemoryKb();
-        long start = System.nanoTime();
+        String methodName = joinPoint.getSignature().toShortString();
+        System.out.println("⚙️ BenchmarkAspect invoked on: " + methodName);
 
-        // Metric trackers
+        long usedBefore = usedMemoryKb();
+        long startWall = System.nanoTime();
+
+        long startCpu = threadMXBean.isCurrentThreadCpuTimeSupported()
+                ? threadMXBean.getCurrentThreadCpuTime()
+                : -1;
+
         final int[] peakThreads = {threadMXBean.getThreadCount()};
         final double[] peakCpu = {getProcessCpuLoad()};
 
-        // Background sampler
         AtomicBoolean running = new AtomicBoolean(true);
         Thread sampler = new Thread(() -> {
             while (running.get()) {
@@ -40,7 +49,7 @@ public class BenchmarkAspect {
                     if (threads > peakThreads[0]) peakThreads[0] = threads;
                     if (cpu > peakCpu[0]) peakCpu[0] = cpu;
 
-                    Thread.sleep(50); // Sampling time
+                    Thread.sleep(50);
                 } catch (InterruptedException ignored) {
                     break;
                 }
@@ -57,17 +66,27 @@ public class BenchmarkAspect {
             sampler.join();
         }
 
-        long durationMs = (System.nanoTime() - start) / 1_000_000;
+        long endWall = System.nanoTime();
+        long endCpu = threadMXBean.isCurrentThreadCpuTimeSupported()
+                ? threadMXBean.getCurrentThreadCpuTime()
+                : -1;
+
+        long durationMs = (endWall - startWall) / 1_000_000;
+        long cpuTimeMs = (startCpu >= 0 && endCpu >= 0)
+                ? (endCpu - startCpu) / 1_000_000
+                : -1;
+
         long usedAfter = usedMemoryKb();
         long memoryUsed = Math.max(usedAfter - usedBefore, 0);
 
         BenchmarkRegistry.add(new BenchmarkResult(
                 Optional.ofNullable(BenchmarkContext.getTestName()).orElse("Application"),
-                joinPoint.getSignature().toShortString(),
+                methodName,
                 durationMs,
                 memoryUsed,
                 peakThreads[0],
-                peakCpu[0]
+                peakCpu[0],
+                cpuTimeMs
         ));
 
         return result;
